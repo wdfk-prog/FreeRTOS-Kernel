@@ -50,9 +50,6 @@
     #error This file must not be used if configSUPPORT_DYNAMIC_ALLOCATION is 0
 #endif
 
-/* A few bytes might be lost to byte aligning the heap start address. */
-#define configADJUSTED_HEAP_SIZE        ( configTOTAL_HEAP_SIZE - portBYTE_ALIGNMENT )
-
 /* Max value that fits in a size_t type. */
 #define heapSIZE_MAX                    ( ~( ( size_t ) 0 ) )
 
@@ -71,6 +68,12 @@
     static uint8_t ucHeap[ configTOTAL_HEAP_SIZE ];
 #endif /* configAPPLICATION_ALLOCATED_HEAP */
 
+/* A few bytes might be lost to byte aligning the heap start address. */
+static size_t xAdjustedHeapSize = ( size_t ) ( configTOTAL_HEAP_SIZE - portBYTE_ALIGNMENT );
+
+/* UcHeap array starts on a correctly aligned boundary. */
+static uint8_t * pucAlignedHeap = NULL;
+
 /* Index into the ucHeap array. */
 static size_t xNextFreeByte = ( size_t ) 0U;
 
@@ -79,7 +82,6 @@ static size_t xNextFreeByte = ( size_t ) 0U;
 void * pvPortMalloc( size_t xWantedSize )
 {
     void * pvReturn = NULL;
-    static uint8_t * pucAlignedHeap = NULL;
 
     /* Ensure that blocks are always aligned. */
     #if ( portBYTE_ALIGNMENT != 1 )
@@ -110,12 +112,13 @@ void * pvPortMalloc( size_t xWantedSize )
             /* Ensure the heap starts on a correctly aligned boundary. */
             pucAlignedHeap = ( uint8_t * ) ( ( ( portPOINTER_SIZE_TYPE ) &( ucHeap[ portBYTE_ALIGNMENT - 1 ] ) ) &
                                              ( ~( ( portPOINTER_SIZE_TYPE ) portBYTE_ALIGNMENT_MASK ) ) );
+            xAdjustedHeapSize = configTOTAL_HEAP_SIZE - (( portPOINTER_SIZE_TYPE ) &pucAlignedHeap - ( portPOINTER_SIZE_TYPE ) &ucHeap[0]);
         }
 
         /* Check there is enough room left for the allocation. */
         if( ( xWantedSize > 0 ) &&
             ( heapADD_WILL_OVERFLOW( xNextFreeByte, xWantedSize ) == 0 ) &&
-            ( ( xNextFreeByte + xWantedSize ) < configADJUSTED_HEAP_SIZE ) )
+            ( ( xNextFreeByte + xWantedSize ) < xAdjustedHeapSize ) )
         {
             /* Return the next free byte then increment the index past this
              * block. */
@@ -161,7 +164,7 @@ void vPortInitialiseBlocks( void )
 
 size_t xPortGetFreeHeapSize( void )
 {
-    return( configADJUSTED_HEAP_SIZE - xNextFreeByte );
+    return( xAdjustedHeapSize - xNextFreeByte );
 }
 
 /*-----------------------------------------------------------*/
